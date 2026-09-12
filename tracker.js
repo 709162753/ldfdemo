@@ -1,24 +1,42 @@
 /**
- * tracker.js — 轻量级前端访问统计（纯静态、零后端依赖）
+ * tracker.js — 轻量级前端访问统计（双通道：服务端上报 + 本地镜像）
  * 统计能力：
- *   1. 页面浏览量 PV（按天）
- *   2. 独立访客 UV（按天，基于 localStorage 生成的访客 ID）
+ *   1. 页面浏览量 PV（按天，上报服务端）
+ *   2. 独立访客 UV（按天，基于访客 ID 去重）
  *   3. 访问来源（referrer 解析：直接访问/搜索引擎/社交媒体/外部链接）
  *   4. 设备类型（UA 解析：桌面/移动/平板）
- *   5. 各模块停留时间（IntersectionObserver + 页面可见性判断）
+ *   5. 各模块停留时间（IntersectionObserver + 页面可见性判断，心跳差量上报）
  *   6. 每日访问量记录（30 天）
- * 数据写入 localStorage，实时镜像写入 live key 供数据看板跨页面读取。
+ * 有后端（server/app.py）时上报真实全网数据；纯静态打开时自动降级为本地采集。
  */
 (function () {
   "use strict";
 
-  var STORE_KEY = "ldf_analytics_v1";   // 聚合数据
+  var STORE_KEY = "ldf_analytics_v1";   // 聚合数据（本地镜像）
   var LIVE_KEY  = "ldf_live_session";    // 实时会话镜像
   var MODULE_NAMES = {
     hero: "首页横幅", about: "关于我", skills: "专业技能",
     experience: "工作经历", projects: "项目经历",
     recommend: "推荐", contact: "联系"
   };
+
+  /* ---------- 服务端上报（配合 server/app.py；纯静态/file:// 打开时自动跳过） ---------- */
+  var API_BASE = (location.protocol === "file:") ? null : (location.origin + "/api");
+  function report(path, payload) {
+    if (!API_BASE) return;
+    try {
+      var body = JSON.stringify(payload);
+      if (navigator.sendBeacon) {
+        navigator.sendBeacon(API_BASE + path, new Blob([body], { type: "application/json" }));
+      } else {
+        fetch(API_BASE + path, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: body, keepalive: true
+        }).catch(function () {});
+      }
+    } catch (e) {}
+  }
 
   /* ---------- 工具 ---------- */
   function today() {
@@ -93,15 +111,21 @@
   var t = today();
   var source = parseSource();
   var device = parseDevice();
+  // 看板页不计 PV，仅参与心跳（避免自己刷自己的浏览量）
+  var countPv = !/dashboard\.html/i.test(location.pathname);
 
-  if (!data.days[t]) data.days[t] = { pv: 0, uv: 0 };
-  data.days[t].pv += 1;
-  if (!data._todayUV || data._todayUV.date !== t) { data._todayUV = { date: t, counted: false }; }
-  if (!data._todayUV.counted) { data.days[t].uv += 1; data._todayUV.counted = true; }
-  data.sources[source] = (data.sources[source] || 0) + 1;
-  data.devices[device] = (data.devices[device] || 0) + 1;
-  data.visits += 1;
-  saveJSON(STORE_KEY, data);
+  if (countPv) {
+    if (!data.days[t]) data.days[t] = { pv: 0, uv: 0 };
+    data.days[t].pv += 1;
+    if (!data._todayUV || data._todayUV.date !== t) { data._todayUV = { date: t, counted: false }; }
+    if (!data._todayUV.counted) { data.days[t].uv += 1; data._todayUV.counted = true; }
+    data.sources[source] = (data.sources[source] || 0) + 1;
+    data.devices[device] = (data.devices[device] || 0) + 1;
+    data.visits += 1;
+    saveJSON(STORE_KEY, data);
+    // 服务端上报 PV（有后端时即为真实全网统计）
+    report("/collect/pv", { visitorId: data.visitorId, date: t, source: source, device: device, isNew: !!data.isNew });
+  }
 
   /* ---------- 模块停留时间追踪 ---------- */
   var sessionTime = {};   // 本次会话各模块秒数
@@ -147,10 +171,23 @@
     document.querySelectorAll("[data-module]").forEach(function (el) { io.observe(el); });
   }
 
-  // 每 2 秒落盘 + 每 30 秒一次心跳
+  // 每 2 秒本地落盘；每 5 秒向服务端发送心跳（累计停留快照，服务端做差量入库）
   setInterval(flushTick, 2000);
+  setInterval(reportHeartbeat, 5000);
   window.addEventListener("beforeunload", flushTick);
   window.addEventListener("scroll", function () {}, { passive: true });
+
+  function reportHeartbeat() {
+    var rounded = {};
+    Object.keys(sessionTime).forEach(function (k) {
+      rounded[k] = Math.round(sessionTime[k]);
+    });
+    report("/collect/heartbeat", {
+      visitorId: data.visitorId, date: t,
+      currentModule: activeModule, sessionTime: rounded,
+      source: source, device: device
+    });
+  }
 
   /* ---------- 实时会话镜像（供数据看板读取） ---------- */
   function writeLive() {

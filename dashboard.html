@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>数据看板 · 陆德飞个人网站</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+:root { --accent: #2563eb; --text: #1e293b; --text2: #64748b; --border: #e2e8f0; }
+body { font-family: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif; background: #f1f5f9; color: var(--text); padding: 28px 20px 60px; }
+.wrap { max-width: 1100px; margin: 0 auto; }
+.head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 18px; }
+.head h1 { font-size: 26px; }
+.head h1 span { color: var(--accent); }
+.head .sub { color: var(--text2); font-size: 13px; margin-top: 4px; }
+.back { display: inline-block; padding: 8px 18px; border-radius: 9px; background: #fff; border: 1px solid var(--border); color: var(--accent); font-weight: 600; text-decoration: none; font-size: 14px; }
+.back:hover { background: var(--accent); color: #fff; }
+.status-chip { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 600; padding: 5px 14px; border-radius: 999px; }
+.status-chip.online { color: #16a34a; background: #f0fdf4; border: 1px solid #bbf7d0; }
+.status-chip.offline { color: #b45309; background: #fffbeb; border: 1px solid #fde68a; }
+.status-chip i { width: 9px; height: 9px; border-radius: 50%; animation: blink 1.6s infinite; }
+.status-chip.online i { background: #22c55e; }
+.status-chip.offline i { background: #f59e0b; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.25} }
+
+.stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(155px, 1fr)); gap: 14px; margin-bottom: 20px; }
+.stat { background: #fff; border: 1px solid var(--border); border-radius: 14px; padding: 18px 20px; }
+.stat .num { font-size: 30px; font-weight: 800; color: var(--accent); }
+.stat .num small { font-size: 14px; color: var(--text2); font-weight: 400; margin-left: 3px; }
+.stat .lbl { font-size: 13px; color: var(--text2); margin-top: 2px; }
+
+.grid-2 { display: grid; grid-template-columns: 1.6fr 1fr; gap: 16px; margin-bottom: 16px; }
+.grid-2eq { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+.card { background: #fff; border: 1px solid var(--border); border-radius: 14px; padding: 20px 22px; }
+.card h3 { font-size: 16px; margin-bottom: 4px; }
+.card .hint { font-size: 12.5px; color: var(--text2); margin-bottom: 14px; }
+.chart-box { width: 100%; }
+.empty { padding: 40px 10px; text-align: center; color: #94a3b8; font-size: 14px; }
+
+table.tbl { width: 100%; border-collapse: collapse; font-size: 14px; }
+table.tbl th, table.tbl td { padding: 9px 10px; text-align: left; border-bottom: 1px solid #eef2f7; }
+table.tbl th { color: var(--text2); font-weight: 600; font-size: 12.5px; }
+table.tbl td b { color: var(--accent); }
+.now-tag { display: inline-block; background: #dcfce7; color: #15803d; font-size: 11px; font-weight: 700; padding: 1px 8px; border-radius: 999px; }
+.vid { font-family: Consolas, monospace; font-size: 12.5px; color: var(--text2); }
+
+.note { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 12px; padding: 14px 18px; font-size: 13px; color: #1e40af; margin-top: 18px; line-height: 1.8; }
+.note.warn { background: #fffbeb; border-color: #fde68a; color: #92400e; }
+@media (max-width: 900px) { .grid-2, .grid-2eq { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="head">
+    <div>
+      <h1>📊 网站数据看板 <span>· 陆德飞个人网站</span></h1>
+      <div class="sub">全部数据来自真实埋点采集（PV / UV / 来源 / 设备 / 模块停留 / 每日趋势），每 5 秒自动刷新</div>
+    </div>
+    <div style="display:flex;gap:12px;align-items:center;">
+      <span class="status-chip offline" id="statusChip"><i></i><span id="statusText">连接后端中…</span></span>
+      <a class="back" href="index.html">← 返回主页</a>
+    </div>
+  </div>
+
+  <!-- 指标卡 -->
+  <div class="stat-row">
+    <div class="stat"><div class="num" id="kpiPv">--</div><div class="lbl">累计页面浏览量 PV</div></div>
+    <div class="stat"><div class="num" id="kpiUv">--</div><div class="lbl">累计独立访客 UV</div></div>
+    <div class="stat"><div class="num" id="kpiTodayPv">--</div><div class="lbl">今日浏览量 PV</div></div>
+    <div class="stat"><div class="num" id="kpiTodayUv">--</div><div class="lbl">今日独立访客 UV</div></div>
+    <div class="stat"><div class="num" id="kpiAvgTime">--</div><div class="lbl">平均停留时长 / 访客</div></div>
+    <div class="stat"><div class="num" id="kpiOnline">--</div><div class="lbl">当前在线访客</div></div>
+  </div>
+
+  <!-- 趋势 + 来源 -->
+  <div class="grid-2">
+    <div class="card">
+      <h3>每日访问量趋势（近 30 天）</h3>
+      <div class="hint">PV = 页面浏览量 · UV = 独立访客数（按访客 ID 去重）</div>
+      <div class="chart-box" id="trendChart"></div>
+    </div>
+    <div class="card">
+      <h3>访问来源分布</h3>
+      <div class="hint">基于 referrer 与 utm_source 解析</div>
+      <div class="chart-box" id="sourceChart"></div>
+    </div>
+  </div>
+
+  <!-- 设备 + 模块停留 -->
+  <div class="grid-2eq">
+    <div class="card">
+      <h3>设备类型分布</h3>
+      <div class="hint">基于 User-Agent 解析</div>
+      <div class="chart-box" id="deviceChart"></div>
+    </div>
+    <div class="card">
+      <h3>各模块停留时间排行（累计）</h3>
+      <div class="hint">IntersectionObserver 实时采集，仅统计页面可见时的停留</div>
+      <div class="chart-box" id="moduleChart"></div>
+    </div>
+  </div>
+
+  <!-- 在线访客 -->
+  <div class="card" style="margin-bottom:16px">
+    <h3>在线访客实时会话</h3>
+    <div class="hint">近 30 秒内有心跳的访客（含正在浏览的模块与本次会话停留）</div>
+    <table class="tbl" id="liveTbl">
+      <thead><tr><th>访客</th><th>设备</th><th>来源</th><th>正在浏览</th><th>本次会话各模块停留</th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <div class="empty" id="liveEmpty" style="display:none">暂无在线访客 —— 打开主页标签页并停留片刻，这里会实时出现会话记录</div>
+  </div>
+
+  <div class="note" id="modeNote">…</div>
+</div>
+
+<script src="js/tracker.js"></script>
+<script src="js/charts.js"></script>
+<script>
+(function () {
+  "use strict";
+  var MN = window.SiteTracker ? window.SiteTracker.MODULE_NAMES : {};
+  var SRC_COLORS = { "直接访问": "#2563eb", "搜索引擎": "#10b981", "社交媒体": "#f59e0b", "外部链接": "#8b5cf6", "邮件推广": "#ec4899", "站内跳转": "#64748b" };
+  var DEV_COLORS = { "桌面": "#2563eb", "移动": "#10b981", "平板": "#f59e0b" };
+  var MOD_COLORS = { hero: "#64748b", about: "#8b5cf6", skills: "#10b981", experience: "#f59e0b", projects: "#2563eb", recommend: "#ec4899", contact: "#14b8a6" };
+  var apiOK = false;
+
+  function fmtT(sec) { sec = Math.round(sec); var m = Math.floor(sec / 60); return (m ? m + "分" : "") + (sec % 60) + "秒"; }
+  function empty(el, msg) { el.innerHTML = '<div class="empty">' + msg + '</div>'; }
+
+  /* ---------- 空状态 ----------
+  function showEmptyAll() {
+    ["trendChart", "sourceChart", "deviceChart", "moduleChart"].forEach(function (id) {
+      empty(document.getElementById(id), "暂无数据 —— 打开主页访问一次后，这里会自动出现真实统计");
+    });
+    document.querySelector("#liveTbl tbody").innerHTML = "";
+    document.getElementById("liveEmpty").style.display = "block";
+  } */
+
+  /* ---------- 渲染（真实数据，无任何模拟） ---------- */
+  function render(D) {
+    var hasData = D.totalPv > 0;
+
+    document.getElementById("kpiPv").innerHTML = D.totalPv.toLocaleString() + "<small>次</small>";
+    document.getElementById("kpiUv").innerHTML = D.totalUv.toLocaleString() + "<small>人</small>";
+    document.getElementById("kpiTodayPv").innerHTML = D.today.pv + "<small>次</small>";
+    document.getElementById("kpiTodayUv").innerHTML = D.today.uv + "<small>人</small>";
+    document.getElementById("kpiAvgTime").textContent = D.avgDwellPerVisitor ? fmtT(D.avgDwellPerVisitor) : "—";
+    document.getElementById("kpiOnline").innerHTML = (D.online || 0) + "<small>人</small>";
+
+    // 趋势
+    var tc = document.getElementById("trendChart");
+    if (hasData) {
+      window.Charts.line(tc, {
+        labels: D.trend.map(function (t) { return t.date.slice(5); }),
+        unit: " 次",
+        series: [
+          { name: "PV 浏览量", color: "#2563eb", fill: true, data: D.trend.map(function (t) { return t.pv; }) },
+          { name: "UV 访客数", color: "#10b981", data: D.trend.map(function (t) { return t.uv; }) }
+        ]
+      });
+    } else empty(tc, "暂无访问数据 —— 打开主页访问后自动生成");
+
+    // 来源
+    var sc = document.getElementById("sourceChart");
+    var srcKeys = Object.keys(D.sources || {});
+    if (srcKeys.length) {
+      window.Charts.donut(sc, srcKeys.map(function (k) {
+        return { label: k, value: D.sources[k], color: SRC_COLORS[k] || "#94a3b8" };
+      }), "总来源次数", "");
+    } else empty(sc, "暂无来源数据");
+
+    // 设备
+    var dc = document.getElementById("deviceChart");
+    var devKeys = Object.keys(D.devices || {});
+    if (devKeys.length) {
+      window.Charts.vbar(dc, devKeys.map(function (k) {
+        return { label: k, value: D.devices[k], color: DEV_COLORS[k] || "#94a3b8" };
+      }), " 次");
+    } else empty(dc, "暂无设备数据");
+
+    // 模块停留
+    var mc = document.getElementById("moduleChart");
+    var mods = Object.keys(D.moduleTime || {});
+    if (mods.length) {
+      window.Charts.hbar(mc, mods.map(function (k) {
+        return { label: MN[k] || k, value: Math.round(D.moduleTime[k]), color: MOD_COLORS[k] || "#94a3b8" };
+      }).sort(function (a, b) { return b.value - a.value; }), fmtT);
+    } else empty(mc, "暂无停留数据 —— 在主页各模块停留几秒后自动累计");
+
+    // 在线访客
+    var live = D.live || [];
+    var tb = document.querySelector("#liveTbl tbody");
+    document.getElementById("liveEmpty").style.display = live.length ? "none" : "block";
+    tb.innerHTML = live.map(function (s) {
+      var st = s.sessionTime || {};
+      var stStr = Object.keys(st).map(function (k) {
+        return (MN[k] || k) + " " + fmtT(st[k]);
+      }).join("、") || "—";
+      return "<tr><td class='vid'>" + s.visitorId + "</td><td>" + (s.device || "—") +
+        "</td><td>" + (s.source || "—") + "</td><td>" +
+        (s.currentModule ? "<span class='now-tag'>● " + (MN[s.currentModule] || s.currentModule) + "</span>" : "—") +
+        "</td><td style='font-size:13px'>" + stStr + "</td></tr>";
+    }).join("");
+  }
+
+  /* ---------- 数据获取：优先后端 API；失败则退回本机 localStorage 真实数据 ---------- */
+  function fetchAndRender() {
+    if (location.protocol === "file:") { offlineMode("当前以静态文件方式打开，统计后端未运行"); return; }
+    fetch("/api/stats").then(function (r) {
+      if (!r.ok) throw new Error("http " + r.status);
+      return r.json();
+    }).then(function (D) {
+      apiOK = true;
+      setStatus(true);
+      render(D);
+    }).catch(function () {
+      offlineMode("统计后端未启动（fetch /api/stats 失败）");
+    });
+  }
+
+  function offlineMode(reason) {
+    setStatus(false, reason);
+    var local = window.SiteTracker ? window.SiteTracker.getData() : {};
+    var live = window.SiteTracker ? window.SiteTracker.getSession() : {};
+    var st = (live && live.sessionTime) || {};
+    var days = local.days || {};
+    var trend = [], d = new Date();
+    for (var i = 29; i >= 0; i--) {
+      var ds = new Date(d.getTime() - i * 864e5);
+      var key = ds.getFullYear() + "-" + String(ds.getMonth() + 1).padStart(2, "0") + "-" + String(ds.getDate()).padStart(2, "0");
+      trend.push({ date: key, pv: (days[key] || {}).pv || 0, uv: (days[key] || {}).uv || 0 });
+    }
+    render({
+      totalPv: Object.keys(days).reduce(function (a, k) { return a + days[k].pv; }, 0),
+      totalUv: Object.keys(days).reduce(function (a, k) { return a + days[k].uv; }, 0),
+      today: trend[trend.length - 1],
+      trend: trend,
+      sources: local.sources || {},
+      devices: local.devices || {},
+      moduleTime: local.moduleTime || {},
+      avgDwellPerVisitor: Math.round(Object.keys(local.moduleTime || {}).reduce(function (a, k) { return a + local.moduleTime[k]; }, 0) / Math.max(1, local.visits || 1)),
+      online: live && (Date.now() - live.ts < 30000) ? 1 : 0,
+      live: live && (Date.now() - live.ts < 30000) ? [{ visitorId: "本机", currentModule: live.currentModule, device: live.device, source: live.source, sessionTime: st }] : []
+    });
+  }
+
+  function setStatus(ok, reason) {
+    var chip = document.getElementById("statusChip");
+    var txt = document.getElementById("statusText");
+    var note = document.getElementById("modeNote");
+    chip.className = "status-chip " + (ok ? "online" : "offline");
+    txt.textContent = ok ? "后端已连接 · 真实全网统计" : "离线模式";
+    if (ok) {
+      note.className = "note";
+      note.innerHTML = "<b>✅ 数据模式：真实统计。</b>所有指标均由 <code>tracker.js</code> 埋点实时上报至 FastAPI + SQLite 后端聚合（数据库文件：<code>server/data/analytics.db</code>），无任何模拟数据。" +
+        "看板每 5 秒自动刷新；访客在主页停留时，「在线访客」区会显示实时会话。";
+    } else {
+      note.className = "note warn";
+      note.innerHTML = "<b>⚠️ 离线模式：仅显示本浏览器采集的数据。</b>" + (reason ? "（" + reason + "）" : "") +
+        " 启动真实全网统计：双击 <code>server/start_server.bat</code>，或运行 <code>python server/run.py</code>，然后访问 <code>http://127.0.0.1:8000</code>。" +
+        " 部署到公网服务器后，任何访客的浏览、来源、设备与停留时长都会自动入库统计。";
+    }
+  }
+
+  fetchAndRender();
+  setInterval(fetchAndRender, 5000);
+})();
+</script>
+</body>
+</html>
